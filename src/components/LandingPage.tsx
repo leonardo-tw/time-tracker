@@ -1,14 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { Trash2 } from 'lucide-react';
-
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -25,7 +17,6 @@ interface WeekTableProps {
   handleActivityChange: (week: string, day: string, timeSlot: string, value: string) => void;
 }
 
-// WeekTable come componente separato
 const WeekTable: React.FC<WeekTableProps> = ({ 
   week, 
   timesheet, 
@@ -71,12 +62,18 @@ const WeekTable: React.FC<WeekTableProps> = ({
   </div>
 );
 
+interface ChartDataItem {
+  name: string;
+  hours: number;
+  storyPoints: string;
+}
+
 interface TimeTrackerComponentProps {
   timesheet: any;
   projects: string[];
   newProject: string;
-  projectHours: any;
-  chartData: any[];
+  projectHours: Record<string, number>;
+  chartData: ChartDataItem[];
   timeSlots: string[];
   days: string[];
   activeWeek: string;
@@ -88,7 +85,6 @@ interface TimeTrackerComponentProps {
   totalStoryPoints: string;
 }
 
-// TimeTrackerComponent come componente separato
 const TimeTrackerComponent: React.FC<TimeTrackerComponentProps> = ({
   timesheet,
   projects,
@@ -219,7 +215,7 @@ const TimeTrackerComponent: React.FC<TimeTrackerComponentProps> = ({
   </div>
 );
 
-const LandingPage: React.FC = () => {
+const LandingPage = () => {
   const timeSlots = [
     "09:00-10:00", "10:00-11:00", "11:00-12:00", "12:00-13:00",
     "14:00-15:00", "15:00-16:00", "16:00-17:00", "17:00-18:00"
@@ -272,160 +268,84 @@ const LandingPage: React.FC = () => {
   });
 
   const [newProject, setNewProject] = useState('');
-  const [projectHours, setProjectHours] = useState<Record<string, number>>({});
   const [activeWeek, setActiveWeek] = useState('week1');
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.setItem('timesheet', JSON.stringify(timesheet));
-        localStorage.setItem('projects', JSON.stringify(projects));
-        calculateHours();
-      } catch (error) {
-        console.error('Error saving data:', error);
-      }
-    }
-  }, [timesheet, projects]);
-
-  const calculateHours = () => {
-    const hours: Record<string, number> = {};
-    ['week1', 'week2'].forEach(week => {
-      if (timesheet[week]) {
-        days.forEach(day => {
-          if (timesheet[week][day]) {
-            Object.values(timesheet[week][day]).forEach(activity => {
-              if (!activity) return;
-              if (activity.includes('/')) {
-                const subActivities = activity.split('/');
-                subActivities.forEach(subActivity => {
-                  hours[subActivity] = (hours[subActivity] || 0) + 0.5;
-                });
-              } else {
-                hours[activity] = (hours[activity] || 0) + 1;
-              }
-            });
-          }
-        });
-      }
-    });
-    setProjectHours(hours);
-  };
 
   const handleAddProject = () => {
     if (newProject && !projects.includes(newProject)) {
-      setProjects([...projects, newProject]);
+      const updatedProjects = [...projects, newProject];
+      setProjects(updatedProjects);
+      localStorage.setItem('projects', JSON.stringify(updatedProjects));
       setNewProject('');
     }
   };
 
-  const handleRemoveProject = (projectToRemove: string) => {
-    setProjects(projects.filter(project => project !== projectToRemove));
-    const updatedTimesheet = {
-      week1: {...timesheet.week1},
-      week2: {...timesheet.week2}
-    };
-    ['week1', 'week2'].forEach(week => {
-      days.forEach(day => {
-        if (updatedTimesheet[week][day]) {
-          Object.keys(updatedTimesheet[week][day]).forEach(slot => {
-            if (updatedTimesheet[week][day][slot] === projectToRemove) {
-              updatedTimesheet[week][day][slot] = '';
-            }
-          });
-        }
-      });
-    });
-    setTimesheet(updatedTimesheet);
+  const handleRemoveProject = (project: string) => {
+    const updatedProjects = projects.filter(p => p !== project);
+    setProjects(updatedProjects);
+    localStorage.setItem('projects', JSON.stringify(updatedProjects));
   };
 
   const handleActivityChange = (week: string, day: string, timeSlot: string, value: string) => {
-    setTimesheet(prev => ({
-      ...prev,
+    const updatedTimesheet = {
+      ...timesheet,
       [week]: {
-        ...prev[week],
+        ...timesheet[week],
         [day]: {
-          ...prev[week][day],
+          ...timesheet[week][day],
           [timeSlot]: value
         }
       }
-    }));
+    };
+    setTimesheet(updatedTimesheet);
+    localStorage.setItem('timesheet', JSON.stringify(updatedTimesheet));
   };
 
-  const calculateStoryPoints = (hours: number) => {
-    return (hours / 8).toFixed(1);
+  const calculateHours = () => {
+    const hours: Record<string, number> = {};
+    ['week1', 'week2'].forEach(week => {
+      Object.values(timesheet[week]).forEach(day => {
+        Object.values(day).forEach(activity => {
+          if (!activity) return;
+          if (activity.includes('/')) {
+            activity.split('/').forEach(subActivity => {
+              hours[subActivity] = (hours[subActivity] || 0) + 0.5;
+            });
+          } else {
+            hours[activity] = (hours[activity] || 0) + 1;
+          }
+        });
+      });
+    });
+    return hours;
   };
 
-  const chartData = Object.entries(projectHours)
-    .filter(([name]) => name !== '')
-    .map(([name, hours]) => ({
-      name,
-      hours,
-      storyPoints: calculateStoryPoints(hours)
-    }))
-    .sort((a, b) => b.hours - a.hours);
+  const projectHours = calculateHours();
 
-  const totalStoryPoints = chartData.reduce((total, project) => 
-    total + parseFloat(project.storyPoints), 0
-  ).toFixed(1);
+  const chartData = projects.map(project => ({
+    name: project,
+    hours: projectHours[project] || 0,
+    storyPoints: 'N/A'
+  }));
+
+  const totalStoryPoints = 'N/A'; // You can replace this with real data if available.
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100">
-      {/* Header */}
-      <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 py-6">
-          <nav className="flex justify-between items-center">
-            <h1 className="text-2xl font-bold text-gray-900">Sprint Time Tracker</h1>
-            <div className="space-x-4">
-              <Button variant="ghost">Documentazione</Button>
-              <Button variant="ghost">Contatti</Button>
-              <Button>Inizia Ora</Button>
-            </div>
-          </nav>
-        </div>
-      </header>
-
-      {/* Hero Section */}
-      <section className="py-12 px-4">
-        <div className="max-w-7xl mx-auto text-center">
-          <h2 className="text-4xl font-bold text-gray-900 mb-4">
-            Gestisci il Tuo Tempo in Modo Efficiente
-          </h2>
-          <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
-            Organizza e monitora le tue attività sprint per sprint. 
-            Visualizza statistiche dettagliate e ottimizza il tuo workflow.
-          </p>
-        </div>
-      </section>
-
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 py-8">
-        <TimeTrackerComponent
-          timesheet={timesheet}
-          projects={projects}
-          newProject={newProject}
-          projectHours={projectHours}
-          chartData={chartData}
-          timeSlots={timeSlots}
-          days={days}
-          activeWeek={activeWeek}
-          setNewProject={setNewProject}
-          handleAddProject={handleAddProject}
-          handleRemoveProject={handleRemoveProject}
-          handleActivityChange={handleActivityChange}
-          setActiveWeek={setActiveWeek}
-          totalStoryPoints={totalStoryPoints}
-        />
-      </main>
-
-      {/* Footer */}
-      <footer className="bg-white mt-16 border-t">
-        <div className="max-w-7xl mx-auto px-4 py-8">
-          <div className="text-center text-gray-600">
-            <p>© 2024 Sprint Time Tracker. Tutti i diritti riservati.</p>
-          </div>
-        </div>
-      </footer>
-    </div>
+    <TimeTrackerComponent
+      timesheet={timesheet}
+      projects={projects}
+      newProject={newProject}
+      projectHours={projectHours}
+      chartData={chartData}
+      timeSlots={timeSlots}
+      days={days}
+      activeWeek={activeWeek}
+      setNewProject={setNewProject}
+      handleAddProject={handleAddProject}
+      handleRemoveProject={handleRemoveProject}
+      handleActivityChange={handleActivityChange}
+      setActiveWeek={setActiveWeek}
+      totalStoryPoints={totalStoryPoints}
+    />
   );
 };
 
